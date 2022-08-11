@@ -57,7 +57,7 @@ class Critic(nn.Module):
 
 if __name__=="__main__":
     critic=Critic(**critic_params)
-    data=np.load("rss"+str(NUM_ATOMS)+".npz")
+    data=np.load("rss_"+str(NUM_ATOMS)+".npz")
     conforms_memory=data["positions"]
     choices=np.random.choice(conforms_memory.shape[0],size=MEMORY_SIZE,replace=False)
     conforms_memory=conforms_memory[choices]
