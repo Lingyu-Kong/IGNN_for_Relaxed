@@ -1,13 +1,19 @@
+from cProfile import label
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import time
+import wandb
+import matplotlib.pyplot as plt
 from torch.optim.lr_scheduler import MultiStepLR, StepLR
 from gnn.ignn import IGNN
 from gnn.metalayer import MLPwoLastAct
 from utils.tensor_utils import to_tensor
 import config as config
+
+wandb.login(key="37f3de06380e350727df28b49712f8b7fe5b14aa")
+wandb.init(project="IGNN for Relaxed",entity="kly20",config=config.shared_params)
 
 critic_params=config.critic_params
 NUM_EPOCHS=config.shared_params['num_epochs']
@@ -59,14 +65,18 @@ if __name__=="__main__":
     critic=Critic(**critic_params)
     data=np.load("rss_"+str(NUM_ATOMS)+".npz")
     conforms_memory=data["positions"]
-    choices=np.random.choice(conforms_memory.shape[0],size=MEMORY_SIZE,replace=False)
+    choices=np.random.choice(conforms_memory.shape[0],size=MEMORY_SIZE*1.2,replace=False)
     conforms_memory=conforms_memory[choices]
     energies_memory=data["energies"][choices]
+    train_conforms=conforms_memory[:MEMORY_SIZE]
+    train_energies=energies_memory[:MEMORY_SIZE]
+    test_conforms=conforms_memory[MEMORY_SIZE:]
+    test_energies=energies_memory[MEMORY_SIZE:]
     for i in range(NUM_EPOCHS): 
         start_time=time.time()
-        choices=np.random.choice(conforms_memory.shape[0],size=BATCH_SIZE,replace=False)
-        conforms=conforms_memory[choices]
-        energies=energies_memory[choices]
+        choices=np.random.choice(train_conforms.shape[0],size=BATCH_SIZE,replace=False)
+        conforms=train_conforms[choices]
+        energies=train_energies[choices]
         value=critic(to_tensor(conforms))
         loss=F.mse_loss(value,to_tensor(energies))
         critic.optimizer.zero_grad()
@@ -74,5 +84,24 @@ if __name__=="__main__":
         critic.optimizer.step()
         critic.scheduler.step()
         end_time=time.time()
+        wandb.log({"train loss":loss.item()})
         if i%100==0:
             print("Epoch: {}, loss: {}, time: {}".format(i,loss.item(),end_time-start_time))
+            choices=np.random.choice(test_conforms.shape[0],size=BATCH_SIZE,replace=False)
+            conforms=test_conforms[choices]
+            energies=test_energies[choices]
+            value=critic(to_tensor(conforms))
+            loss=F.mse_loss(value,to_tensor(energies))
+            wandb.log({"test loss":loss.item()})
+    
+    ## final visualization
+    for i in range(10):
+        choices=np.random.choice(test_conforms.shape[0],size=BATCH_SIZE,replace=False)
+        conforms=test_conforms[choices]
+        energies=test_energies[choices]
+        values=critic(to_tensor(conforms))
+        plt.figure()
+        plt.plot(energies.tolist(),label="ground truth")
+        plt.plot(values.tolist(),label="prediction")
+        plt.legend()
+        wandb.log("compare_"+str(i),plt)
