@@ -10,13 +10,64 @@ from torch.optim.lr_scheduler import MultiStepLR, StepLR
 from gnn.ignn import IGNN
 from gnn.metalayer import MLPwoLastAct
 from utils.tensor_utils import to_tensor
-import config as config
 
-critic_params=config.critic_params
-NUM_EPOCHS=config.shared_params['num_epochs']
-NUM_ATOMS=config.shared_params['num_atoms']
-BATCH_SIZE=config.shared_params['batch_size']
-MEMORY_SIZE=config.shared_params['memory_size']
+device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--epochs", type=int, default=100000)
+parser.add_argument("--batch_size", type=int, default=32)
+parser.add_argument("--lr", type=float, default=0.001)
+parser.add_argument("--memory_size", type=int, default=5000)
+args = parser.parse_args()
+
+shared_params={
+    "num_atoms":60,
+    "device":device,
+    "batch_size":args.batch_size,
+    "memory_size":args.memory_size,
+    "num_epochs":args.epochs,
+    "lr":args.lr
+}
+
+critic_params={
+        "gnn_params":{
+                "device":device,
+                "num_atoms":shared_params["num_atoms"],
+                "mlp_hidden_size":256,
+                "mlp_layers":2,
+                "latent_size":64,
+                "use_layer_norm":False,
+                "num_message_passing_steps":6,
+                "global_reducer":"sum",
+                "node_reducer":"sum",
+                "dropedge_rate":0.1,
+                "dropnode_rate":0.1,
+                "dropout":0.1,
+                "layernorm_before":False,
+                "use_bn":False,
+                "cycle":1,
+                "node_attn":True,
+                "global_attn":True,
+            },
+        "mlp_params":{
+                "input_size":64,
+                "output_sizes":[64]*2+[1],
+                "use_layer_norm":False,
+                "activation":nn.ReLU,
+                "dropout":0.1,
+                "layernorm_before":False,
+                "use_bn":False,
+            },
+        "lr":5e-4,
+        "decay_interval":200,
+        "decay_rate":0.95,
+        "device":shared_params["device"],
+}
+
+NUM_EPOCHS=args.epochs
+NUM_ATOMS=shared_params["num_atoms"]
+BATCH_SIZE=shared_params["batch_size"]
+MEMORY_SIZE=shared_params["memory_size"]
 
 class Critic(nn.Module):
     def __init__(
@@ -59,7 +110,7 @@ class Critic(nn.Module):
                 nn.init.constant_(m.bias,0)
 
 wandb.login(key="37f3de06380e350727df28b49712f8b7fe5b14aa")
-wandb.init(project="IGNN for Relaxed",entity="kly20",config=config.shared_params)
+wandb.init(project="IGNN for Relaxed",entity="kly20",config=shared_params)
 
 if __name__=="__main__":
     critic=Critic(**critic_params)
